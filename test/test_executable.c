@@ -16,6 +16,8 @@ void func_a(int some_arg) {
 
 void func_b(int some_arg) {
 	printf("void func_b(int some_arg=%d)\n", some_arg);
+	if(func_a_replaced)
+		func_a_replaced(some_arg+1);
 }
 
 int main(int argc, char **argv) {
@@ -26,6 +28,7 @@ int main(int argc, char **argv) {
 	void *self = dlopen(NULL, RTLD_LAZY);
 	void *func_a_addr = dlsym(self, "func_a");
 	void *func_b_addr = dlsym(self, "func_b");
+	func_a_replaced = NULL;
 
 	assert(func_a_addr != NULL);
 	assert(func_b_addr != NULL);
@@ -34,7 +37,7 @@ int main(int argc, char **argv) {
 
 	libredirect_init();
 
-	if((err = libredirect_redirect(func_a_addr, func_b_addr, func_a_replaced))) {
+	if((err = libredirect_redirect(func_a_addr, func_b_addr, (void **)&func_a_replaced))) {
 		printf("libredirect_redirect failed: %s (%d)\n", strerror(err), err);
 		return err;
 	}

@@ -391,39 +391,101 @@ exit:
 	return err;
 }
 
-__PUBLIC int libredirect_redirect(void *from, void *to, void *new) {
+__PUBLIC int libredirect_redirect(void *from, void *to, void **new) {
 	int err = libredirect_error_none;
+
+	libredirect.dis_info->buffer = NULL;
+	struct segment *segments = NULL;
+	unsigned char *stub = NULL;
+	void *jmp_instr = NULL;
 
 	if(!(libredirect.status & status_init) && (err = libredirect_error_already))
 		goto exit;
 
-	struct segment *segments;
+	/* atm, we can't handle more than 32bit addresses */
+	void *func_distance = (void *)((from > to) ? from - to : to - from);
+	if(func_distance > (void *)0xffffffff && (err = libredirect_error_distant))
+		goto exit;
+
 	if((err = init_segments(&segments)))
 		goto exit;
 
+	size_t jmp_size = 0;
+	init_jump_instruction(from, to, &jmp_instr, &jmp_size);
+
 	libredirect.dis_info->read_memory_func = buffer_read_memory;
-	libredirect.dis_info->buffer_length = MAX_ASM_INST_LENGTH;
+	libredirect.dis_info->buffer_length = jmp_size + MAX_ASM_INST_LENGTH;
 	libredirect.dis_info->buffer = malloc(libredirect.dis_info->buffer_length);
 
 	if(!libredirect.dis_info->buffer && (err = libredirect_error_nomem))
 		goto exit;
 
-	read_memory(segments, from, libredirect.dis_info->buffer_length, libredirect.dis_info->buffer);
+	if((err = read_memory(segments, from, libredirect.dis_info->buffer_length, libredirect.dis_info->buffer)))
+		goto exit;
 
-	void *jmp_instr = NULL;
-	size_t jmp_size = 0;
-	init_jump_instruction(from, to, &jmp_instr, &jmp_size);
+	/* after this instruction code should not fail or we have to restore to a point before this */
+	if((err = write_memory(segments, from, jmp_size, jmp_instr)))
+		goto exit;
 
+	struct segment *curr_seg = segments;
+	while(curr_seg && (curr_seg->start > from || curr_seg->end < from))
+		curr_seg = curr_seg->next;
+	if(!curr_seg && (err = libredirect_error_segments))
+		goto restore_and_exit;
 
-	write_memory(segments, from, jmp_size, jmp_instr);
+	long pagesize = sysconf(_SC_PAGE_SIZE);
+	if(pagesize == -1 && errno && (err = libredirect_error_internal))
+		goto restore_and_exit;
+
+	void *stub_buffer = mmap(curr_seg->end, pagesize, PROT_WRITE|PROT_EXEC, MAP_ANON|MAP_PRIVATE, -1, 0);
+	if(stub_buffer == MAP_FAILED && (err = libredirect_error_internal))
+		goto restore_and_exit;
+
+	size_t full_instr_size = 0;
+	while(full_instr_size < jmp_size) {
+		full_instr_size += libredirect.disassemble(full_instr_size, libredirect.dis_info);
+	}
 
 	destroy_jump_instruction(jmp_instr);
-	jmp_instr = NULL;
+	init_jump_instruction(stub_buffer + full_instr_size, from+full_instr_size, &jmp_instr, &jmp_size);
 
-	destroy_segments(segments);
-	segments = NULL;
+	size_t stub_size = full_instr_size + jmp_size;
+	stub = malloc(stub_size);
+	if(!stub && (err = libredirect_error_nomem))
+		goto restore_and_exit;
+	memcpy(stub, libredirect.dis_info->buffer, full_instr_size);
+	memcpy(stub + full_instr_size, jmp_instr, jmp_size);
+
+	func_distance = (void *)((from > stub_buffer) ? from - stub_buffer : stub_buffer - from);
+	if(func_distance > (void *)0xffffffff && (err = libredirect_error_internal))
+		goto restore_and_exit;
+
+	memcpy(stub_buffer, stub, stub_size);
+	*new = stub_buffer;
+
+	goto exit;
+
+restore_and_exit:
+	/* try to restore default state */
+	write_memory(segments, from, jmp_size, libredirect.dis_info->buffer);
 
 exit:
+	if(stub) {
+		free(stub);
+		stub = NULL;
+	}
+	if(jmp_instr) {
+		destroy_jump_instruction(jmp_instr);
+		jmp_instr = NULL;
+	}
+	if(segments) {
+		destroy_segments(segments);
+		segments = NULL;
+	}
+	if(libredirect.dis_info->buffer) {
+		free(libredirect.dis_info->buffer);
+		libredirect.dis_info->buffer = NULL;
+	}
 	return err;
 }
 
