@@ -7,6 +7,7 @@
 #include <unistd.h>
 #include <sys/mman.h>
 #include <dis-asm.h>
+#include <dlfcn.h>
 
 #include "redirect.h"
 #include "arch.h"
@@ -61,10 +62,12 @@ int read_memory(const struct segment *segment, const void *at, const size_t leng
 	assert(segment != NULL);
 
 	while(segment) {
-		if(at < segment->end && at > segment->start)
+		if(at < segment->end && at >= segment->start)
 			break;
 		segment = segment->next;
 	}
+	if(!segment && (err = libredirect_error_segments))
+		goto exit;
 
 	if(segment->permission & permission_read) {
 		goto read;
@@ -102,10 +105,12 @@ int write_memory(const struct segment *segment, void *at, const size_t length, c
 	assert(segment != NULL);
 
 	while(segment) {
-		if(at < segment->end && at > segment->start)
+		if(at < segment->end && at >= segment->start)
 			break;
 		segment = segment->next;
 	}
+	if(!segment && (err = libredirect_error_segments))
+		goto exit;
 
 	if(segment->permission & permission_write)
 		goto write;
@@ -461,7 +466,9 @@ __PUBLIC int libredirect_redirect(void *from, void *to, void **new) {
 		goto restore_and_exit;
 
 	memcpy(stub_buffer, stub, stub_size);
-	*new = stub_buffer;
+	if(new)  {
+		*new = stub_buffer;
+	}
 
 	goto exit;
 
@@ -489,3 +496,71 @@ exit:
 	return err;
 }
 
+#if 0
+void (*glFinish_orig)();
+void (*glxSwapBuffers_orig)(void *dsp, unsigned int drawable);
+
+void glFinish() {
+	assert(glFinish_orig != NULL);
+	printf("finish\n");
+}
+
+void glxSwapBuffers(void *dsp, unsigned int drawable) {
+	assert(glxSwapBuffers_orig != NULL);
+	usleep(100000);
+	fprintf(stderr, "swap buffers (orig: %p)\n", glxSwapBuffers_orig);
+	glxSwapBuffers_orig(dsp, drawable);
+}
+
+__PUBLIC __attribute__((constructor)) void libredirect_test() {
+
+	int err = 0;
+	void *gl = dlopen("libGL.so", RTLD_LAZY);
+	assert(gl != NULL);
+
+	void *(*glxGetProcAddress)(const char *);
+	glxGetProcAddress = dlsym(gl, "glXGetProcAddress");
+	assert(glxGetProcAddress != NULL);
+
+	void *glFinish_addr = glxGetProcAddress("glFinish");
+	void *glFinish_addr2 = dlsym(dlopen(NULL, RTLD_LAZY), "glFinish");
+	assert(glFinish_addr != NULL);
+	void *glxSwapBuffers_addr =  glxGetProcAddress("glXSwapBuffers");
+	void *glxSwapBuffers_addr2 = dlsym(dlopen(NULL, RTLD_LAZY), "glXSwapBuffers");
+	assert(glxSwapBuffers_addr != NULL);
+
+	glFinish_orig = NULL;
+	glxSwapBuffers_orig = NULL;
+
+	libredirect_init();
+
+	if(glFinish_addr2) {
+		printf("redirect from %p to %p\n", glFinish_addr2, glFinish);
+		if((err = libredirect_redirect(glFinish_addr2, glFinish, (void **)&glFinish_orig))) {
+			printf("libredirect_redirect failed: %d\n", err);
+		}
+	}
+	else {
+		printf("redirect from %p to %p\n", glFinish_addr, glFinish);
+		if((err = libredirect_redirect(glFinish_addr, glFinish, (void **)&glFinish_orig))) {
+			printf("libredirect_redirect failed: %d\n", err);
+		}
+	}
+
+	if(glxSwapBuffers_addr2) {
+		printf("redirect from %p to %p\n", glxSwapBuffers_addr2, glxSwapBuffers);
+		if((err = libredirect_redirect(glxSwapBuffers_addr2, glxSwapBuffers, (void **)&glxSwapBuffers_orig))) {
+			printf("libredirect_redirect failed: %d\n", err);
+		}
+	}
+	else {
+		printf("redirect from %p to %p\n", glxSwapBuffers_addr, glxSwapBuffers);
+		if((err = libredirect_redirect(glxSwapBuffers_addr, glxSwapBuffers, (void **)&glxSwapBuffers_orig))) {
+			printf("libredirect_redirect failed: %d\n", err);
+		}
+	}
+
+
+	libredirect_destroy();
+}
+#endif

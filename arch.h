@@ -1,7 +1,8 @@
 #ifndef LIBREDIRECT_ARCH_H__
 #define LIBREDIRECT_ARCH_H__
 
-#ifdef __amd64__
+#if defined(__amd64__) || \
+	defined(__i386__)
 #else
 #error unsupported architecture
 #endif
