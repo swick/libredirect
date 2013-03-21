@@ -1,22 +1,17 @@
-# set(BFD_PREFERE_STATIC True) if you want to prefere the static library
-# set(BFD_SEARCH_LIB "/path/to/dir") to search for the library in /path/to/dir first
+# set(BFD_PREFER_STATIC True) if you want to prefer the static library
 
-if(BFD_PREFERE_STATIC)
+if(BFD_PREFER_STATIC)
 	set(BFD_SEARCHORDER libbfd.a libbfd.so)
 	# then do the same for the dependency, if not defined otherwise
-	if(NOT DEFINED LIBIBERTY_PREFERE_STATIC)
-		set(LIBIBERTY_PREFERE_STATIC True)
+	if(NOT DEFINED LIBIBERTY_PREFER_STATIC)
+		set(LIBIBERTY_PREFER_STATIC True)
 	endif()
 else()
 	set(BFD_SEARCHORDER libbfd.so libbfd.a)
 endif()
 
-if(DEFINED BFD_SEARCH_LIB AND NOT DEFINED LIBIBERTY_SEARCH_LIB)
-	set(LIBIBERTY_SEARCH_LIB ${BFD_SEARCH_LIB})
-endif()
-
-find_library(BFD_LIBRARY NAMES ${BFD_SEARCHORDER} HINTS ${BFD_SEARCH_LIB})
-find_path(BFD_INCLUDE_DIR bfd.h ${BFD_SEARCH_PATH})
+find_library(BFD_LIBRARY NAMES ${BFD_SEARCHORDER})
+find_path(BFD_INCLUDE_DIR bfd.h)
 
 if(BFD_INCLUDE_DIR AND BFD_LIBRARY)
 	set(BFD_FOUND TRUE)

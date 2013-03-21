@@ -2,9 +2,9 @@
 cmake_minimum_required(VERSION 2.8)
 project(libredirect)
 
-option(USE_LOCAL_LIBS "use libopcodes, libbfd and libiberty from the local ./lib folder if possible" ON)
-option(PREFERE_STATIC "use static libraries if possible" ON)
-option(BUILD_TESTS "build tests" ON)
+#option CMAKE_LIBRARY_PATH
+ option(LIBRARY_PREFER_STATIC "use static libraries if possible" ON)
+ option(BUILD_TESTS "build tests" ON)
 
 if(NOT DEFINED CMAKE_BUILD_TYPE)
     SET(CMAKE_BUILD_TYPE "Debug")
@@ -14,14 +14,15 @@ set(BASE_C_FLAGS "${CMAKE_C_FLAGS}")
 set(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake_modules")
 
 
-
 set(CMAKE_C_FLAGS "${BASE_C_FLAGS} -Wall -Wextra -fvisibility=hidden -fPIC")
 
-if(PREFERE_STATIC)
-	set(OPCODES_PREFERE_STATIC True)
+if(${CMAKE_C_FLAGS} MATCHES "-m32")
+	set_property(GLOBAL PROPERTY FIND_LIBRARY_USE_LIB64_PATHS OFF)
+	set(CMAKE_LIBRARY_PATH ${CMAKE_LIBRARY_PATH} /lib/i386-linux-gnu)
 endif()
-if(USE_LOCAL_LIBS)
-	set(OPCODES_SEARCH_LIB "${PROJECT_SOURCE_DIR}/lib")
+
+if(LIBRARY_PREFER_STATIC)
+	set(OPCODES_PREFER_STATIC True)
 endif()
 find_package(OPCODES REQUIRED)
 
