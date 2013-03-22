@@ -16,7 +16,6 @@ typedef enum {
 	libredirect_error_syscall,
 	libredirect_error_executable,
 	libredirect_error_segments,
-	libredirect_error_internal,
 	libredirect_error_distant
 } libredirect_error;
 
@@ -35,6 +34,11 @@ int libredirect_destroy();
  *        of function \param from in \param new
  */
 int libredirect_redirect(void *from, void *to, void **new);
+
+/*
+ *
+ */
+char *libredirect_strerror(int errnum);
 
 #ifdef __cplusplus
 }

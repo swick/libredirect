@@ -438,12 +438,12 @@ __PUBLIC int libredirect_redirect(void *from, void *to, void **new) {
 	if(!curr_seg && (err = libredirect_error_segments))
 		goto restore_and_exit;
 
+	errno = 0;
 	long pagesize = sysconf(_SC_PAGE_SIZE);
-	if(pagesize == -1 && errno && (err = libredirect_error_internal))
-		goto restore_and_exit;
+	assert(pagesize != -1 && errno == 0);
 
 	void *stub_buffer = mmap(curr_seg->end, pagesize, PROT_WRITE|PROT_EXEC, MAP_ANON|MAP_PRIVATE, -1, 0);
-	if(stub_buffer == MAP_FAILED && (err = libredirect_error_internal))
+	if(stub_buffer == MAP_FAILED && (err = libredirect_error_syscall))
 		goto restore_and_exit;
 
 	size_t full_instr_size = 0;
@@ -462,7 +462,7 @@ __PUBLIC int libredirect_redirect(void *from, void *to, void **new) {
 	memcpy(stub + full_instr_size, jmp_instr, jmp_size);
 
 	func_distance = (void *)((from > stub_buffer) ? from - stub_buffer : stub_buffer - from);
-	if(func_distance > (void *)0xffffffff && (err = libredirect_error_internal))
+	if(func_distance > (void *)0xffffffff && (err = libredirect_error_distant))
 		goto restore_and_exit;
 
 	memcpy(stub_buffer, stub, stub_size);
@@ -496,6 +496,28 @@ exit:
 	return err;
 }
 
+__PUBLIC char *libredirect_strerror(int errnum) {
+	switch(errnum) {
+		case libredirect_error_none:
+			return "No error";
+		case libredirect_error_already:
+			return "The library is already initalized";
+		case libredirect_error_nomem:
+			return "Out of memory";
+		case libredirect_error_syscall:
+			return "System call failed";
+		case libredirect_error_executable:
+			return "Proccess has an invalid executable";
+		case libredirect_error_segments:
+			return "Pointer not in any segment";
+		case libredirect_error_distant:
+			return "Distance of the addresses exceeds boundaries";
+		case libredirect_error_unknown:
+		default:
+			return "Unknown error";
+	}
+}
+
 #if 0
 void (*glFinish_orig)();
 void (*glxSwapBuffers_orig)(void *dsp, unsigned int drawable);
@@ -507,7 +529,7 @@ void glFinish() {
 
 void glxSwapBuffers(void *dsp, unsigned int drawable) {
 	assert(glxSwapBuffers_orig != NULL);
-	usleep(100000);
+	usleep(500000);
 	fprintf(stderr, "swap buffers (orig: %p)\n", glxSwapBuffers_orig);
 	glxSwapBuffers_orig(dsp, drawable);
 }
@@ -515,7 +537,7 @@ void glxSwapBuffers(void *dsp, unsigned int drawable) {
 __PUBLIC __attribute__((constructor)) void libredirect_test() {
 
 	int err = 0;
-	void *gl = dlopen("libGL.so", RTLD_LAZY);
+	void *gl = dlopen("libGL.so.1", RTLD_LAZY);
 	assert(gl != NULL);
 
 	void *(*glxGetProcAddress)(const char *);
