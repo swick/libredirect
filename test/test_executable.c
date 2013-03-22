@@ -20,8 +20,17 @@ void func_b(int some_arg) {
 		func_a_replaced(some_arg+1);
 }
 
-void log_func(int level, const char *str) {
-	printf("%s (%d)\n", str, level);
+void log_func(const char *file, int line, int level, const char *str) {
+	char *level_str = "";
+	switch(level) {
+		case libredirect_log_error:
+			level_str = "error"; break;
+		case libredirect_log_warning:
+			level_str = "warning"; break;
+		case libredirect_log_call:
+			level_str = "call"; break;
+	}
+	printf("[%s at %s:%d] %s\n", level_str, file, line, str);
 }
 
 int main(int argc, char **argv) {

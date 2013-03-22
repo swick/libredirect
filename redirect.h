@@ -48,9 +48,9 @@ int libredirect_redirect(void *from, void *to, void **new);
 char *libredirect_strerror(int errnum);
 
 /* \note can be set before libredirect_init
- *
+ * log_func(const char *file, int line, int log_level, const char *log)
  */
-int libredirect_set_log(void (*log_func)(int, const char *), int log_level);
+int libredirect_set_log(void (*log_func)(const char *, int, int, const char *), int log_level);
 
 #ifdef __cplusplus
 }

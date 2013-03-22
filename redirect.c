@@ -17,6 +17,7 @@
 #define __PUBLIC __attribute__((visibility("default")))
 #define MAX_ASM_INST_LENGTH 32 /* wild guess, have no clue */
 #define MAX_MAPS_LINE_LENGTH 4096
+#define LOG(...) libredirect_log(__FILE__, __LINE__, __VA_ARGS__)
 
 enum status {
 	status_none = 0,
@@ -29,7 +30,7 @@ struct {
 	bfd *abfd;
 	disassemble_info *dis_info;
 	disassembler_ftype disassemble;
-	void (*log_func)(int, const char *);
+	void (*log_func)(const char *, int, int, const char *);
 	int log_level;
 } libredirect = {0};
 
@@ -55,7 +56,7 @@ struct segment {
 char *libredirect_strerror(int errnum);
 int destroy_segments(struct segment *segment);
 
-void libredirect_log(int level, const char *format, ...) {
+void libredirect_log(const char *file, int line, int level, const char *format, ...) {
 	if(!libredirect.log_func || !(level & libredirect.log_level))
 		return;
 
@@ -73,7 +74,7 @@ void libredirect_log(int level, const char *format, ...) {
 		str = buffer;
 	}
 
-	libredirect.log_func(level, str);
+	libredirect.log_func(file, line, level, str);
 
 	if(buffer)
 		free(buffer);
@@ -547,7 +548,7 @@ __PUBLIC char *libredirect_strerror(int errnum) {
 	}
 }
 
-__PUBLIC int libredirect_set_log(void (*log_func)(int, const char *), int log_level) {
+__PUBLIC int libredirect_set_log(void (*log_func)(const char *, int, int, const char *), int log_level) {
 	libredirect.log_func = log_func;
 	libredirect.log_level = log_level;
 	return libredirect_error_none;
