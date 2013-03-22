@@ -23,7 +23,8 @@ typedef enum {
 	libredirect_log_error = (1 << 0),
 	libredirect_log_warning = (1 << 1),
 	libredirect_log_call = (1 << 2),
-	libredirect_log_all = (1 << 3)-1
+	libredirect_log_info = (1 << 3),
+	libredirect_log_all = (1 << 4)-1
 } libredirect_log_level;
 
 /*

@@ -29,6 +29,8 @@ void log_func(const char *file, int line, int level, const char *str) {
 			level_str = "warning"; break;
 		case libredirect_log_call:
 			level_str = "call"; break;
+		case libredirect_log_info:
+			level_str = "info"; break;
 	}
 	printf("[%s at %s:%d] %s\n", level_str, file, line, str);
 }

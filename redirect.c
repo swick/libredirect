@@ -61,16 +61,20 @@ void libredirect_log(const char *file, int line, int level, const char *format, 
 		return;
 
 	va_list list;
-	va_start(list, format);
 
+	va_start(list, format);
 	size_t needed = vsnprintf(NULL, 0, format, list);
+	va_end(list);
+
 	char *str = NULL;
 	char *buffer = malloc(needed+2);
 	if(!buffer) {
 		str = libredirect_strerror(libredirect_error_nomem);
 	}
 	else {
+		va_start(list, format);
 		vsnprintf(buffer, needed+1, format, list);
+		va_end(list);
 		str = buffer;
 	}
 
@@ -78,7 +82,6 @@ void libredirect_log(const char *file, int line, int level, const char *format, 
 
 	if(buffer)
 		free(buffer);
-	va_end(list);
 }
 
 int null_fprintf(void *f, const char *str, ...) {
@@ -88,6 +91,7 @@ int null_fprintf(void *f, const char *str, ...) {
 }
 
 int read_memory(const struct segment *segment, const void *at, const size_t length, void *buf) {
+	LOG(libredirect_log_call, __FUNCTION__);
 	int err = libredirect_error_none;
 	assert(segment != NULL);
 
@@ -96,8 +100,10 @@ int read_memory(const struct segment *segment, const void *at, const size_t leng
 			break;
 		segment = segment->next;
 	}
-	if(!segment && (err = libredirect_error_segments))
+	if(!segment && (err = libredirect_error_segments)) {
+		LOG(libredirect_log_error, "no segment found at %p", at);
 		goto exit;
+	}
 
 	if(segment->permission & permission_read) {
 		goto read;
@@ -110,17 +116,23 @@ int read_memory(const struct segment *segment, const void *at, const size_t leng
 
 	int n_perm = permission | PROT_READ;
 
+	LOG(libredirect_log_info, "set read permission on segment (%p-%p)", segment->start, segment->end);
 	if(mprotect(segment->start, segment->end - segment->start, n_perm) < 0) {
+		LOG(libredirect_log_error, "mprotect %d bytes at %p with permission %d failed: %s (%d)",
+			segment->end - segment->start, segment->start, n_perm, strerror(errno), errno);
 		err = libredirect_error_syscall;
 		goto exit;
 	}
 
 read:
+	LOG(libredirect_log_info, "read %d bytes of memory from %p", length, at);
 	memcpy(buf, at, length);
 
-	/*  restore permission */
 	if(!(segment->permission & permission_read)) {
+		LOG(libredirect_log_info, "restore permission on segment (%p-%p)", segment->start, segment->end);
 		if(mprotect(segment->start, segment->end - segment->start, permission) < 0) {
+			LOG(libredirect_log_error, "mprotect %d bytes at %p with permission %d failed: %s (%d)",
+				segment->end - segment->start, segment->start, permission, strerror(errno), errno);
 			err = libredirect_error_syscall;
 			goto exit;
 		}
@@ -131,6 +143,7 @@ exit:
 }
 
 int write_memory(const struct segment *segment, void *at, const size_t length, const void *buf) {
+	LOG(libredirect_log_call, __FUNCTION__);
 	int err = libredirect_error_none;
 	assert(segment != NULL);
 
@@ -139,8 +152,10 @@ int write_memory(const struct segment *segment, void *at, const size_t length, c
 			break;
 		segment = segment->next;
 	}
-	if(!segment && (err = libredirect_error_segments))
+	if(!segment && (err = libredirect_error_segments)) {
+		LOG(libredirect_log_error, "no segment found at %p", at);
 		goto exit;
+	}
 
 	if(segment->permission & permission_write)
 		goto write;
@@ -152,17 +167,24 @@ int write_memory(const struct segment *segment, void *at, const size_t length, c
 
 	int n_perm = permission | PROT_WRITE;
 
+	LOG(libredirect_log_info, "set write permission on segment (%p-%p)", segment->start, segment->end);
 	if(mprotect(segment->start, segment->end - segment->start, n_perm) < 0) {
+		LOG(libredirect_log_error, "mprotect %d bytes at %p with permission %d failed: %s (%d)",
+			segment->end - segment->start, segment->start, n_perm, strerror(errno), errno);
 		err = libredirect_error_syscall;
 		goto exit;
 	}
 
 write:
+	LOG(libredirect_log_info, "write %d bytes to memory at %p", length, at);
 	memcpy(at, buf, length);
 
 	/*  restore permission */
 	if(!(segment->permission & permission_write)) {
+		LOG(libredirect_log_info, "restore permission on segment (%p-%p)", segment->start, segment->end);
 		if(mprotect(segment->start, segment->end - segment->start, permission) < 0) {
+			LOG(libredirect_log_error, "mprotect %d bytes at %p with permission %d failed: %s (%d)",
+				segment->end - segment->start, segment->start, permission, strerror(errno), errno);
 			err = libredirect_error_syscall;
 			goto exit;
 		}
@@ -173,15 +195,19 @@ exit:
 }
 
 int init_segments(struct segment **seg) {
+	LOG(libredirect_log_call, __FUNCTION__);
 	int err = libredirect_error_none;
 	FILE *maps = NULL;
 
 	char map_path[PATH_MAX + 1];
 	snprintf(map_path, PATH_MAX, "/proc/%d/maps", getpid());
+	LOG(libredirect_log_info, "proccess maps are at %s", map_path);
 
 	maps = fopen(map_path, "r");
-	if(!maps && (err = libredirect_error_syscall))
+	if(!maps && (err = libredirect_error_syscall)) {
+		LOG(libredirect_log_error, "fopen failed: %s (%d)", strerror(errno), errno);
 		goto exit;
+	}
 
 	char line[MAX_MAPS_LINE_LENGTH];
 	struct segment *segments = NULL;
@@ -190,17 +216,23 @@ int init_segments(struct segment **seg) {
 
 	while(!feof(maps) && fgets(line, MAX_MAPS_LINE_LENGTH, maps) != NULL) {
 		segment = malloc(sizeof(*segment));
-		if(!segment && (err = libredirect_error_nomem))
+		if(!segment && (err = libredirect_error_nomem)) {
+			LOG(libredirect_log_error, "malloc %d bytes failed", sizeof(*segment));
 			goto exit;
+		}
 		memset(segment, 0, sizeof(*segment));
 
 		p = strtok(line, " ");
-		if(!p || sscanf(p, "%p-%p", &segment->start, &segment->end) < 2)
+		if(!p || sscanf(p, "%p-%p", &segment->start, &segment->end) < 2) {
+			LOG(libredirect_log_error, "%s malformed", map_path);
 			goto malformed;
+		}
 
 		p = strtok(NULL, " ");
-		if(!p || strlen(p) < 4)
+		if(!p || strlen(p) < 4) {
+			LOG(libredirect_log_error, "%s malformed", map_path);
 			goto malformed;
+		}
 		if(p[0] == 'r')
 			segment->permission |= permission_read;
 		if(p[1] == 'w')
@@ -209,24 +241,36 @@ int init_segments(struct segment **seg) {
 			segment->permission |= permission_execute;
 
 		p = strtok(NULL, " ");
-		if(!p)
+		if(!p) {
+			LOG(libredirect_log_error, "%s malformed", map_path);
 			goto malformed;
+		}
 
 		p = strtok(NULL, " ");
-		if(!p)
+		if(!p) {
+			LOG(libredirect_log_error, "%s malformed", map_path);
 			goto malformed;
+		}
 
 		p = strtok(NULL, " ");
-		if(!p)
+		if(!p) {
+			LOG(libredirect_log_error, "%s malformed", map_path);
 			goto malformed;
+		}
 
 		p = strtok(NULL, " ");
-		if(!p)
+		if(!p) {
+			LOG(libredirect_log_error, "%s malformed", map_path);
 			goto malformed;
+		}
 		p[strlen(p)-1] = '\0';
 		segment->path = strdup(p);
-		if(!segment->path && (err = libredirect_error_nomem))
+		if(!segment->path && (err = libredirect_error_nomem)) {
+			LOG(libredirect_log_error, "strdup failed");
 			goto exit;
+		}
+
+		LOG(libredirect_log_info, "found segment %p-%p with permission %d", segment->start, segment->end, segment->permission);
 
 		segment->next = segments;
 		segments = segment;
@@ -237,8 +281,10 @@ int init_segments(struct segment **seg) {
 			goto exit;
 	}
 
-	if(ferror(maps) && (err = libredirect_error_syscall))
+	if(ferror(maps) && (err = libredirect_error_syscall)) {
+		LOG(libredirect_log_error, "reading from %s failed: %s (%d)", map_path, strerror(errno), errno);
 		goto exit;
+	}
 
 	*seg = segments;
 
@@ -253,6 +299,7 @@ exit:
 }
 
 int destroy_segments(struct segment *segment) {
+	LOG(libredirect_log_call, __FUNCTION__);
 	int err = libredirect_error_none;
 	struct segment *t = NULL;
 	while(segment) {
@@ -267,15 +314,18 @@ int destroy_segments(struct segment *segment) {
 }
 
 int init_bfd(const char *exe_path, bfd **bbfd) {
+	LOG(libredirect_log_call, __FUNCTION__);
 	bfd *abfd = NULL;
 	int err = libredirect_error_none;
 	bfd_error_type bfd_err;
 
 	bfd_init();
+	LOG(libredirect_log_info, "open executable %s", exe_path);
 	abfd = bfd_openr(exe_path, NULL);
 
 	if(!abfd) {
 		bfd_err = bfd_get_error();
+		LOG(libredirect_log_error, "bfd_openr failed: %d", bfd_err);
 		switch(bfd_err) {
 			case bfd_error_no_memory:
 				err = libredirect_error_nomem; break;
@@ -289,9 +339,11 @@ int init_bfd(const char *exe_path, bfd **bbfd) {
 		goto exit;
 	}
 
+	LOG(libredirect_log_info, "check executable format");
 	if(!bfd_check_format(abfd, bfd_object)) {
 		bfd_err = bfd_get_error();
 		assert(bfd_err != bfd_error_invalid_operation);
+		LOG(libredirect_log_error, "bfd_check_format failed: %d", bfd_err);
 
 		switch(bfd_err) {
 			case bfd_error_system_call:
@@ -305,6 +357,10 @@ int init_bfd(const char *exe_path, bfd **bbfd) {
 		goto exit;
 	}
 
+	const bfd_arch_info_type *info = bfd_get_arch_info(abfd);
+	assert(info != NULL);
+	LOG(libredirect_log_info, "executable format: arch %s, mach %s", info->arch_name, bfd_printable_arch_mach(info->arch, info->mach));
+
 	*bbfd = abfd;
 
 exit:
@@ -312,15 +368,18 @@ exit:
 }
 
 int destroy_bfd(bfd *abfd) {
+	LOG(libredirect_log_call, __FUNCTION__);
 	if(!bfd_close(abfd))
 		return libredirect_error_none; /* FIXME: what errors can occure? */
 	return libredirect_error_none;
 }
 
 int init_disassembler(bfd *abfd, disassemble_info **dis_info) {
+	LOG(libredirect_log_call, __FUNCTION__);
 	int err = libredirect_error_none;
 	disassemble_info *dis = malloc(sizeof(*dis));
 	if(!dis) {
+		LOG(libredirect_log_error, "malloc %d bytes failed", sizeof(*dis));
 		err = libredirect_error_nomem;
 		goto exit;
 	}
@@ -339,12 +398,14 @@ exit:
 }
 
 int destroy_disassembler(disassemble_info *dis_info) {
+	LOG(libredirect_log_call, __FUNCTION__);
 	assert(dis_info != NULL);
 	free(dis_info);
 	return libredirect_error_none;
 }
 
 int get_disassemble_function(bfd *abfd, disassembler_ftype *dis_asm) {
+	LOG(libredirect_log_call, __FUNCTION__);
 	/* FIXME: doc: Fetch the disassembler for a given BFD, if that support is available.
 	 * what if not available?
 	 */
@@ -353,24 +414,33 @@ int get_disassemble_function(bfd *abfd, disassembler_ftype *dis_asm) {
 }
 
 int get_executable_path(char **ep) {
+	LOG(libredirect_log_call, __FUNCTION__);
 	int err = libredirect_error_none;
 	char proc[PATH_MAX + 1];
 	char buf[PATH_MAX + 1];
 	snprintf(proc, PATH_MAX, "/proc/%d/exe", getpid());
+	printf("proc: %s\n", proc);
+	LOG(libredirect_log_info, "symlink to executable is %s", proc);
 
 	char *exe_path = realpath(proc, buf);
 	*ep = strdup(exe_path);
-	if(!(*ep))
+	if(!(*ep)) {
+		LOG(libredirect_log_error, "strdup failed (Out of memory)");
 		err = libredirect_error_nomem;
+	}
+	LOG(libredirect_log_info, "executable path is %s", exe_path);
 
 	return err;
 }
 
 __PUBLIC int libredirect_init() {
+	LOG(libredirect_log_call, __FUNCTION__);
 	int err = libredirect_error_none;
 
-	if((libredirect.status & status_init) && (err = libredirect_error_already))
+	if((libredirect.status & status_init) && (err = libredirect_error_already)) {
+		LOG(libredirect_log_error, "libredirect is already initialized");
 		goto error;
+	}
 
 	if((err = get_executable_path(&libredirect.executable_path)))
 		goto error;
@@ -401,10 +471,13 @@ exit:
 }
 
 __PUBLIC int libredirect_destroy() {
+	LOG(libredirect_log_call, __FUNCTION__);
 	int err = libredirect_error_none;
 
-	if(!(libredirect.status & status_init) && (err = libredirect_error_already))
+	if(!(libredirect.status & status_init) && (err = libredirect_error_already)) {
+		LOG(libredirect_log_error, "libredirect is not initialized");
 		goto exit;
+	}
 
 	if(libredirect.abfd) {
 		destroy_bfd(libredirect.abfd);
@@ -427,6 +500,7 @@ exit:
 }
 
 __PUBLIC int libredirect_redirect(void *from, void *to, void **new) {
+	LOG(libredirect_log_call, __FUNCTION__);
 	int err = libredirect_error_none;
 
 	libredirect.dis_info->buffer = NULL;
@@ -434,13 +508,17 @@ __PUBLIC int libredirect_redirect(void *from, void *to, void **new) {
 	unsigned char *stub = NULL;
 	void *jmp_instr = NULL;
 
-	if(!(libredirect.status & status_init) && (err = libredirect_error_already))
+	if(!(libredirect.status & status_init) && (err = libredirect_error_already)) {
+		LOG(libredirect_log_error, "libredirect is not initialized");
 		goto exit;
+	}
 
 	/* atm, we can't handle more than 32bit addresses */
 	void *func_distance = (void *)((from > to) ? from - to : to - from);
-	if(func_distance > (void *)0xffffffff && (err = libredirect_error_distant))
+	if(func_distance > (void *)0xffffffff && (err = libredirect_error_distant)) {
+		LOG(libredirect_log_error, "cannot redirect from %p to %p because the difference is too big (> 2^32)", from, to);
 		goto exit;
+	}
 
 	if((err = init_segments(&segments)))
 		goto exit;
@@ -452,8 +530,10 @@ __PUBLIC int libredirect_redirect(void *from, void *to, void **new) {
 	libredirect.dis_info->buffer_length = jmp_size + MAX_ASM_INST_LENGTH;
 	libredirect.dis_info->buffer = malloc(libredirect.dis_info->buffer_length);
 
-	if(!libredirect.dis_info->buffer && (err = libredirect_error_nomem))
+	if(!libredirect.dis_info->buffer && (err = libredirect_error_nomem)) {
+		LOG(libredirect_log_error, "malloc %d bytes failed", libredirect.dis_info->buffer_length);
 		goto exit;
+	}
 
 	if((err = read_memory(segments, from, libredirect.dis_info->buffer_length, libredirect.dis_info->buffer)))
 		goto exit;
@@ -465,16 +545,20 @@ __PUBLIC int libredirect_redirect(void *from, void *to, void **new) {
 	struct segment *curr_seg = segments;
 	while(curr_seg && (curr_seg->start > from || curr_seg->end < from))
 		curr_seg = curr_seg->next;
-	if(!curr_seg && (err = libredirect_error_segments))
+	if(!curr_seg && (err = libredirect_error_segments)) {
+		LOG(libredirect_log_error, "no segment found at %p", from);
 		goto restore_and_exit;
+	}
 
 	errno = 0;
 	long pagesize = sysconf(_SC_PAGE_SIZE);
 	assert(pagesize != -1 && errno == 0);
 
 	void *stub_buffer = mmap(curr_seg->end, pagesize, PROT_WRITE|PROT_EXEC, MAP_ANON|MAP_PRIVATE, -1, 0);
-	if(stub_buffer == MAP_FAILED && (err = libredirect_error_syscall))
+	if(stub_buffer == MAP_FAILED && (err = libredirect_error_syscall)) {
+		LOG(libredirect_log_error, "allocating %d bytes of memory with mmap at %p failed", pagesize, curr_seg->end);
 		goto restore_and_exit;
+	}
 
 	size_t full_instr_size = 0;
 	while(full_instr_size < jmp_size) {
@@ -486,14 +570,18 @@ __PUBLIC int libredirect_redirect(void *from, void *to, void **new) {
 
 	size_t stub_size = full_instr_size + jmp_size;
 	stub = malloc(stub_size);
-	if(!stub && (err = libredirect_error_nomem))
+	if(!stub && (err = libredirect_error_nomem)) {
+		LOG(libredirect_log_error, "malloc %d bytes failed", stub_size);
 		goto restore_and_exit;
+	}
 	memcpy(stub, libredirect.dis_info->buffer, full_instr_size);
 	memcpy(stub + full_instr_size, jmp_instr, jmp_size);
 
 	func_distance = (void *)((from > stub_buffer) ? from - stub_buffer : stub_buffer - from);
-	if(func_distance > (void *)0xffffffff && (err = libredirect_error_distant))
+	if(func_distance > (void *)0xffffffff && (err = libredirect_error_distant)) {
+		LOG(libredirect_log_error, "stub (%p) is more than 2^32 bytes away from original function (%p)", stub, from);
 		goto restore_and_exit;
+	}
 
 	memcpy(stub_buffer, stub, stub_size);
 	if(new)  {

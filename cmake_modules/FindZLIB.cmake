@@ -8,7 +8,6 @@ else()
 	set(ZLIB_SEARCHORDER ${ZLIB_DYNAMIC_LIBS} ${ZLIB_STATIC_LIBS} ${ZLIB_SEARCHORDER})
 endif()
 
-message("${CMAKE_LIBRARY_PATH}")
 find_library(ZLIB_LIBRARY NAMES libz.so.1)
 find_path(ZLIB_INCLUDE_DIR zlib.h)
 
