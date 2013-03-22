@@ -52,6 +52,7 @@ struct segment {
 	char *path;
 };
 
+char *libredirect_strerror(int errnum);
 int destroy_segments(struct segment *segment);
 
 void libredirect_log(int level, const char *format, ...) {
@@ -62,12 +63,20 @@ void libredirect_log(int level, const char *format, ...) {
 	va_start(list, format);
 
 	size_t needed = vsnprintf(NULL, 0, format, list);
+	char *str = NULL;
 	char *buffer = malloc(needed+2);
-	vsnprintf(buffer, needed+1, format, list);
+	if(!buffer) {
+		str = libredirect_strerror(libredirect_error_nomem);
+	}
+	else {
+		vsnprintf(buffer, needed+1, format, list);
+		str = buffer;
+	}
 
-	libredirect.log_func(level, buffer);
+	libredirect.log_func(level, str);
 
-	free(buffer);
+	if(buffer)
+		free(buffer);
 	va_end(list);
 }
 
