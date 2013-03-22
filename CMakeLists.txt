@@ -40,6 +40,8 @@ add_library(redirect SHARED ${REDIRECT_SRC})
 include_directories(${REDIRECT_INCLUDES})
 target_link_libraries(redirect ${REDIRECT_LIBS})
 
+include(CTest)
+
 IF(BUILD_TESTS)
 	add_subdirectory(test)
 ENDIF()

@@ -359,7 +359,7 @@ int init_bfd(const char *exe_path, bfd **bbfd) {
 
 	const bfd_arch_info_type *info = bfd_get_arch_info(abfd);
 	assert(info != NULL);
-	LOG(libredirect_log_info, "executable format: arch %s, mach %s", info->arch_name, bfd_printable_arch_mach(info->arch, info->mach));
+	LOG(libredirect_log_info, "executable format: arch %s", bfd_printable_arch_mach(info->arch, info->mach));
 
 	*bbfd = abfd;
 
