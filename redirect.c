@@ -8,6 +8,7 @@
 #include <sys/mman.h>
 #include <dis-asm.h>
 #include <dlfcn.h>
+#include <stdarg.h>
 
 #include "redirect.h"
 #include "arch.h"
@@ -28,7 +29,9 @@ struct {
 	bfd *abfd;
 	disassemble_info *dis_info;
 	disassembler_ftype disassemble;
-} libredirect =  {0};
+	void (*log_func)(int, const char *);
+	int log_level;
+} libredirect = {0};
 
 struct jmp_instruction {
 	unsigned char jmp;
@@ -50,6 +53,23 @@ struct segment {
 };
 
 int destroy_segments(struct segment *segment);
+
+void libredirect_log(int level, const char *format, ...) {
+	if(!libredirect.log_func || !(level & libredirect.log_level))
+		return;
+
+	va_list list;
+	va_start(list, format);
+
+	size_t needed = vsnprintf(NULL, 0, format, list);
+	char *buffer = malloc(needed+2);
+	vsnprintf(buffer, needed+1, format, list);
+
+	libredirect.log_func(level, buffer);
+
+	free(buffer);
+	va_end(list);
+}
 
 int null_fprintf(void *f, const char *str, ...) {
 	UNUSED(f);
@@ -516,6 +536,12 @@ __PUBLIC char *libredirect_strerror(int errnum) {
 		default:
 			return "Unknown error";
 	}
+}
+
+__PUBLIC int libredirect_set_log(void (*log_func)(int, const char *), int log_level) {
+	libredirect.log_func = log_func;
+	libredirect.log_level = log_level;
+	return libredirect_error_none;
 }
 
 #if 0

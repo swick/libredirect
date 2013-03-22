@@ -20,6 +20,10 @@ void func_b(int some_arg) {
 		func_a_replaced(some_arg+1);
 }
 
+void log_func(int level, const char *str) {
+	printf("%s (%d)\n", str, level);
+}
+
 int main(int argc, char **argv) {
 	UNUSED(argc);
 	UNUSED(argv);
@@ -35,6 +39,7 @@ int main(int argc, char **argv) {
 
 	func_a(42);
 
+	libredirect_set_log(log_func, libredirect_log_all);
 	libredirect_init();
 
 	if((err = libredirect_redirect(func_a_addr, func_b_addr, (void **)&func_a_replaced))) {
