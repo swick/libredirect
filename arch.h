@@ -13,4 +13,6 @@ int init_jump_instruction(void *from, void *to, void **instruction, size_t *size
 
 int destroy_jump_instruction(void *instruction);
 
+int is_jump_instruction(void *addr);
+
 #endif

@@ -508,8 +508,13 @@ __PUBLIC int libredirect_redirect(void *from, void *to, void **new) {
 	unsigned char *stub = NULL;
 	void *jmp_instr = NULL;
 
-	if(!(libredirect.status & status_init) && (err = libredirect_error_already)) {
+	if(!(libredirect.status & status_init) && (err = libredirect_error_again)) {
 		LOG(libredirect_log_error, "libredirect is not initialized");
+		goto exit;
+	}
+
+	if(libredirect_is_redirected(from) && (err = libredirect_error_already)) {
+		LOG(libredirect_log_error, "function already redirected");
 		goto exit;
 	}
 
@@ -612,6 +617,56 @@ exit:
 		libredirect.dis_info->buffer = NULL;
 	}
 	return err;
+}
+
+__PUBLIC int libredirect_undo_redirection(void *from, void *new) {
+	LOG(libredirect_log_call, __FUNCTION__);
+	int err = libredirect_error_none;
+
+	if(!(libredirect.status & status_init) && (err = libredirect_error_again)) {
+		LOG(libredirect_log_error, "libredirect is not initialized");
+		goto exit;
+	}
+
+	if(!libredirect_is_redirected(from) && (err = libredirect_error_already)) {
+		LOG(libredirect_log_error, "function is not redirected");
+		goto exit;
+	}
+
+	size_t instr_size;
+	if((err = init_jump_instruction(0, 0, NULL, &instr_size))) {
+		LOG(libredirect_log_error, "Cannot get size for jmp instruction");
+		goto exit;
+	}
+
+	void *orig_instr = malloc(instr_size);
+	if(!orig_instr && (err = libredirect_error_nomem))
+		goto exit;
+
+	struct segment *segments = NULL;
+	if((err = init_segments(&segments)))
+		goto exit;
+
+	if((err = read_memory(segments, new, instr_size, orig_instr)))
+		goto exit;
+
+	if((err = write_memory(segments, from, instr_size, orig_instr)))
+		goto exit;
+
+	/* we should remove the stub at voud *new */
+
+exit:
+	if(segments) {
+		destroy_segments(segments);
+		segments = NULL;
+	}
+
+	return err;
+}
+
+__PUBLIC int libredirect_is_redirected(void *addr) {
+	LOG(libredirect_log_call, __FUNCTION__);
+	return is_jump_instruction(addr);
 }
 
 __PUBLIC char *libredirect_strerror(int errnum) {

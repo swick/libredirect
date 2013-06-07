@@ -58,6 +58,9 @@ int main(int argc, char **argv) {
 		return err;
 	}
 
+	func_a(42);
+
+    libredirect_undo_redirection(func_a_addr, func_a_replaced);
 	libredirect_destroy();
 
 	func_a(42);

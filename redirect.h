@@ -13,8 +13,10 @@ typedef enum {
 	libredirect_error_none = 0,
 	/** unkown error */
 	libredirect_error_unknown,
-	/** already/not initialized */
+	/** already redirected */
 	libredirect_error_already,
+	/** not initialized */
+	libredirect_error_again,
 	/** out of memory */
 	libredirect_error_nomem,
 	/** system call failed */
@@ -65,6 +67,22 @@ int libredirect_destroy();
  *       address to a symbol
  */
 int libredirect_redirect(void *from, void *to, void **new);
+
+/**
+ * \brief undoes the redirection; reset to normal state
+ * \param from address of the function which is redirected
+ * \param pointer to the address of the original function
+ *        (see new param of libredirect_redirect)
+ * \return error code
+ */
+int libredirect_undo_redirection(void *from, void *new);
+
+/**
+ * \brief returns whether the function at addr is redirected
+ * \param addr address of a function
+ * \return 1 if the function is redirected, 0 if not
+ */
+int libredirect_is_redirected(void *addr);
 
 /**
  * \brief get the string representation of an error code

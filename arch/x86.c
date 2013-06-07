@@ -22,8 +22,10 @@ int init_jump_instruction(void *from, void *to, void **instruction, size_t *size
 
 	jmp->opcode = 0xe9;
 	jmp->address = rela;
-	*instruction = (void *)jmp;
-	*size = sizeof(*jmp);
+	if(instruction)
+		*instruction = (void *)jmp;
+	if(size)
+		*size = sizeof(*jmp);
 
 exit:
 	return err;
@@ -33,6 +35,11 @@ int destroy_jump_instruction(void *instruction) {
 	assert(instruction != NULL);
 	free(instruction);
 	return libredirect_error_none;
+}
+
+int is_jump_instruction(void *addr) {
+	struct jmp_instruction *jmp = (struct jmp_instruction*) addr;
+	return (jmp->opcode == 0xe9);
 }
 
 #endif
